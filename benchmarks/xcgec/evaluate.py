@@ -140,7 +140,7 @@ def evaluate_gec(
     metric = DependentCLEME(
         lang=lang,
         scorer_type=ScorerType.PRF,
-        weigher_type=WeigherType.NONE,
+        weigher_type=WeigherType.LENGTH,
         output_visualize=output_visualize,
         merge_distance=merge_distance,
     )

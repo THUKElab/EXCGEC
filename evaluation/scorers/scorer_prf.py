@@ -155,9 +155,12 @@ class PRFEditScorer(BaseScorer):
         self, dataset_scorer_results: List[List[EditScorerResult]]
     ) -> EditScorerResult:
         """Calculate sentence-level PEF Scores."""
+        total_tp, total_fp, total_fn, total_tn = 0, 0, 0, 0
         total_f, total_p, total_r, total_acc = [], [], [], []
         for sample_scorer_result in dataset_scorer_results:
             best_f, best_p, best_r, best_acc = -1.0, -1.0, -1.0, -1.0
+            best_tp, best_fp, best_fn, best_tn = 0, 0, 0, 0
+
             for ref_scorer_result in sample_scorer_result:
                 _tp = ref_scorer_result.tp
                 _fp = ref_scorer_result.fp
@@ -168,11 +171,24 @@ class PRFEditScorer(BaseScorer):
 
                 if gt_numbers([_f, _p, _r, _acc], [best_f, best_p, best_r, best_acc]):
                     best_f, best_p, best_r, best_acc = _f, _p, _r, _acc
+                    best_tp = _tp
+                    best_fp = _fp
+                    best_fn = _fn
+                    best_tn = _tn
+
+            total_tp += best_tp
+            total_fp += best_fp
+            total_fn += best_fn
+            total_tn += best_tn
             total_f.append(best_f)
             total_p.append(best_p)
             total_r.append(best_r)
             total_acc.append(best_acc)
         return EditScorerResult(
+            tp=total_tp,
+            fp=total_fp,
+            fn=total_fn,
+            tn=total_tn,
             p=np.average(total_p),
             r=np.average(total_r),
             f=np.average(total_f),

@@ -32,8 +32,9 @@ WEIGHER_CLASS: Dict[WeigherType, Type[BaseWeigher]] = {
 
 
 def get_weigher(weigher_type: WeigherType, **kwargs: Any) -> BaseWeigher:
-    LOGGER.info(f"Build Weigher: {weigher_type}")
-    return WEIGHER_CLASS[weigher_type](**kwargs)
+    weigher = WEIGHER_CLASS[weigher_type](**kwargs)
+    LOGGER.info(f"Build Weigher: {weigher_type}: {weigher}")
+    return weigher
 
 
 __all__ = [

@@ -14,22 +14,31 @@ LOGGER = get_logger(__name__)
 
 
 class SimilarityWeigher(BaseWeigher):
-    # TODO: Recommend different default_model for languages
+    """Compute edit weights using BERTScore.
+
+    Args:
+        model_name (str, optional): Model name or path for BERTScore.
+            Defaults to DEFAULT_MODEL_NAME. Recommend different default_model for languages.
+        model_layer (int, optional): Number of layers for BERTScore. Defaults to None.
+        batch_size (int, optional): Number of samples per batch. Defaults to 128.
+        device (str, optional): Computing device. Defaults to None.
+        verbose (bool, optional): Whether to print debugging info. Defaults to False.
+        show_progress (bool, optional): Whether to show progress. Defaults to False.
+    """
+
     DEFAULT_MODEL_NAME = "bert-base-uncased"
-    # DEFAULT_MODEL_NAME = "microsoft/deberta-v3-base"
-    # DEFAULT_MODEL_LAYER = 8
 
     def __init__(
         self,
-        model_name: str = None,
+        model_name: str = DEFAULT_MODEL_NAME,
         model_layer: int = None,
         batch_size: int = 128,
         device: str = None,
         verbose: bool = False,
         show_progress: bool = False,
-    ):
+    ) -> None:
         super().__init__()
-        self.model_name = model_name or self.DEFAULT_MODEL_NAME
+        self.model_name = model_name
         self.model_layer = model_layer
         self.batch_size = batch_size
         self.verbose = verbose
@@ -46,61 +55,70 @@ class SimilarityWeigher(BaseWeigher):
             f"Similarity weigher driven by {self.model_name}, Layers: {self.model._num_layers}"
         )
 
-    def get_weights_batch(
-        self, srcs: List[str], refs: List[str], todo_hyps_list: List[List[str]]
-    ) -> List[List[float]]:
-        """Generate weights in batch by using BERTScorer. Weigh edits through similarity increase.
+    @DeprecationWarning
+    def __call__(
+        self,
+        sample_hyp: Sample,
+        sample_ref: Sample,
+        metric_result: SampleMetricResult,
+        for_chunk: bool = True,
+    ) -> None:
+        """Generate weights for a single MetricSampleResult.
+
+        Not recommended, use self.get_weights_batch instead if you have a pile of samples.
+        """
+        if not for_chunk:
+            raise ValueError("Only support for_chunk = True")
+
+        src = sample_hyp.source[0]
+        for ref, ref_result in zip(sample_ref.target, metric_result.ref_results):
+            todo_hyps = []
+            # Build pseudo hyp that
+            assert isinstance(ref_result, BaseChunkMetricResult)
+            todo_chunks = (
+                ref_result.tp_chunks
+                + ref_result.fp_chunks
+                + ref_result.fn_chunks
+                + ref_result.tn_chunks
+                + ref_result.fp_ne_chunks
+                + ref_result.fp_un_chunks
+            )
+            for chunk in todo_chunks:
+                todo_hyps.append(
+                    src_chunks_to_text(
+                        chunks=sample_hyp.chunks[0][0], chunk_index=chunk.chunk_index
+                    )
+                )
+            weights = self._get_weights_sample(
+                src=src, ref=ref, todo_hyps=todo_hyps, verbose=self.verbose
+            )
+            for chunk, weight in zip(todo_chunks, weights):
+                chunk.weight = weight
+            print(todo_chunks)
+
+    def _get_weights_sample(
+        self, src: str, ref: str, todo_hyps: List[str]
+    ) -> List[float]:
+        """Generate weights by using BERTScorer.
 
         Args:
-            srcs (List[str]): Source sentences.
-            refs (List[str]): Reference sentences.
-            todo_hyps (List[List[str]]): Pseudo hypothesis sentences.
+            src (str): Source sentence.
+            ref (str): Reference sentence.
+            todo_hyps (List[str]): Pseudo hypothesis sentences.
 
         Returns:
-            List[List[float]]: Generated edit weights, with each corresponding to each todo_hyp.
+            List[float]: Generated edit weights, with each corresponding to each todo_hyp.
         """
-        if len(srcs) != len(refs) != len(todo_hyps_list):
-            raise ValueError("The input sentences should consist of the same number")
+        processed_hyps = [src] + todo_hyps
+        processed_refs = [ref] * len(todo_hyps)
 
-        processed_hyps = []
-        processed_refs = []
-        anchor_indices = []  # Save the weights for the pair (src, ref)
-        for src, ref, todo_hyps in zip(srcs, refs, todo_hyps_list):
-            for idx, hyp in enumerate(todo_hyps):
-                if not hyp:
-                    LOGGER.warning(
-                        f"Empty Sentences for weigher\n"
-                        f"SRC:{src}\nREF:{ref}\nHYPs:{todo_hyps}"
-                    )
-                    todo_hyps[idx] = src
-
-            anchor_indices.append(len(processed_hyps))
-            processed_hyps.extend([src] + todo_hyps)
-            processed_refs.extend([ref] * (1 + len(todo_hyps)))
-
-        # Compute sentence similarity
         fscores = self.model.score(
             cands=processed_hyps, refs=processed_refs, verbose=self.verbose
         )[-1]
+        anchor = fscores[0].item()
+        return [abs(anchor - x.item()) for x in fscores[1:]]
 
-        # print(f"srcs: {srcs}")
-        # print(f"refs: {refs}")
-        # print(f"todo_hyps_list: {todo_hyps_list}")
-        # print(fscores)
-
-        # Compute edit weights
-        weights_list = []
-        for idx, anchor_idx in enumerate(anchor_indices):
-            num_sent = len(todo_hyps_list[idx])
-            anchor = fscores[anchor_idx].item()
-            weights = [
-                abs(anchor - x.item())
-                for x in fscores[anchor_idx + 1 : anchor_idx + 1 + num_sent]
-            ]
-            weights_list.append(weights)
-        return weights_list
-
-    def weigh_batch(
+    def get_weights_batch(
         self,
         samples_hyp: List[Sample],
         samples_ref: List[Sample],
@@ -178,7 +196,7 @@ class SimilarityWeigher(BaseWeigher):
                     print(f"FP_UN Chunks: {ref_result.fp_un_chunks}")
                     print()
 
-    def weigh_batch_v2(
+    def get_weights_batch_v2(
         self,
         samples_hyp: List[Sample],
         samples_ref: List[Sample],
@@ -256,66 +274,59 @@ class SimilarityWeigher(BaseWeigher):
                     print(f"FP_UN Chunks: {ref_result.fp_un_chunks}")
                     print()
 
-    @DeprecationWarning
-    def __call__(
-        self,
-        sample_hyp: Sample,
-        sample_ref: Sample,
-        metric_result: SampleMetricResult,
-        for_chunk: bool = True,
-    ) -> None:
-        """Generate weights for single MetricSampleResult.
-
-        Not recommended, use self.get_weights_batch instead.
-        """
-        if not for_chunk:
-            raise ValueError("Only support for_chunk = True")
-
-        src = sample_hyp.source[0]
-        for ref, ref_result in zip(sample_ref.target, metric_result.ref_results):
-            todo_hyps = []
-            # Build pseudo hyp that
-            assert isinstance(ref_result, BaseChunkMetricResult)
-            todo_chunks = (
-                ref_result.tp_chunks
-                + ref_result.fp_chunks
-                + ref_result.fn_chunks
-                + ref_result.tn_chunks
-                + ref_result.fp_ne_chunks
-                + ref_result.fp_un_chunks
-            )
-            for chunk in todo_chunks:
-                todo_hyps.append(
-                    src_chunks_to_text(
-                        chunks=sample_hyp.chunks[0][0], chunk_index=chunk.chunk_index
-                    )
-                )
-            weights = self.get_weights(
-                src=src, ref=ref, todo_hyps=todo_hyps, verbose=self.verbose
-            )
-            for chunk, weight in zip(todo_chunks, weights):
-                chunk.weight = weight
-            print(todo_chunks)
-
-    def get_weights(self, src: str, ref: str, todo_hyps: List[str]) -> List[float]:
-        """Generate weights by using BERTScorer.
+    def _get_weights_batch(
+        self, srcs: List[str], refs: List[str], todo_hyps_list: List[List[str]]
+    ) -> List[List[float]]:
+        """Generate weights in batch by using BERTScorer. Weigh edits through similarity increase.
 
         Args:
-            src (str): Source sentence.
-            ref (str): Reference sentence.
-            todo_hyps (List[str]): Pseudo hypothesis sentences.
+            srcs (List[str]): Source sentences.
+            refs (List[str]): Reference sentences.
+            todo_hyps (List[List[str]]): Pseudo hypothesis sentences.
 
         Returns:
-            List[float]: Generated edit weights, with each corresponding to each todo_hyp.
+            List[List[float]]: Generated edit weights, with each corresponding to each todo_hyp.
         """
-        processed_hyps = [src] + todo_hyps
-        processed_refs = [ref] * len(todo_hyps)
+        if len(srcs) != len(refs) != len(todo_hyps_list):
+            raise ValueError("The input sentences should consist of the same number")
 
+        processed_hyps = []
+        processed_refs = []
+        anchor_indices = []  # Save the weights for the pair (src, ref)
+        for src, ref, todo_hyps in zip(srcs, refs, todo_hyps_list):
+            for idx, hyp in enumerate(todo_hyps):
+                if not hyp:
+                    LOGGER.warning(
+                        f"Empty Sentences for weigher\n"
+                        f"SRC:{src}\nREF:{ref}\nHYPs:{todo_hyps}"
+                    )
+                    todo_hyps[idx] = src
+
+            anchor_indices.append(len(processed_hyps))
+            processed_hyps.extend([src] + todo_hyps)
+            processed_refs.extend([ref] * (1 + len(todo_hyps)))
+
+        # Compute sentence similarity
         fscores = self.model.score(
             cands=processed_hyps, refs=processed_refs, verbose=self.verbose
         )[-1]
-        anchor = fscores[0].item()
-        return [abs(anchor - x.item()) for x in fscores[1:]]
+
+        # print(f"srcs: {srcs}")
+        # print(f"refs: {refs}")
+        # print(f"todo_hyps_list: {todo_hyps_list}")
+        # print(fscores)
+
+        # Compute edit weights
+        weights_list = []
+        for idx, anchor_idx in enumerate(anchor_indices):
+            num_sent = len(todo_hyps_list[idx])
+            anchor = fscores[anchor_idx].item()
+            weights = [
+                abs(anchor - x.item())
+                for x in fscores[anchor_idx + 1 : anchor_idx + 1 + num_sent]
+            ]
+            weights_list.append(weights)
+        return weights_list
 
     def get_similarity(
         self,
@@ -328,16 +339,13 @@ class SimilarityWeigher(BaseWeigher):
             src = sample.source[0]
             for tgt in sample.target:
                 if not tgt:
-                    LOGGER.warning(f"Empty Target: {src}")
+                    LOGGER.warning(f"Empty Target: {sample}")
                 srcs.append(src)
                 tgts.append(tgt)
 
         # Compute sentence similarity
-        fscores = self.model.score(
-            cands=srcs,
-            refs=tgts,
-            batch_size=self.batch_size,
-        )[-1].tolist()
+        fscores = self.model.score(cands=srcs, refs=tgts, batch_size=self.batch_size)
+        fscores = fscores[-1].tolist()
 
         idx = 0
         for sample, metric_result in zip(samples, metric_results):
@@ -351,9 +359,9 @@ class SimilarityWeigher(BaseWeigher):
 
         if verbose:
             for src, tgt, fscore in zip(srcs, tgts, fscores):
-                print(f"SRC: {src}")
-                print(f"TGT: {tgt}")
-                print(f"Score: {fscore}")
+                print(f"Source: {src}")
+                print(f"Target: {tgt}")
+                print(f"Similarity: {fscore}")
         return fscores
 
 

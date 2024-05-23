@@ -6,16 +6,30 @@ from ..schema import BaseChunkMetricResult, BaseEditMetricResult, SampleMetricRe
 
 
 class BaseWeigher:
-    """Generate weights for edits."""
+    """Compute edit weights.
 
-    def __init__(self, **kwargs: Any) -> None:
+    Edit weigher is beneficial to improve correlations with human judgements.
+
+    """
+
+    def __init__(self) -> None:
         super().__init__()
 
     def signature(self) -> str:
         """Returns a signature for the tokenizer."""
         return "none"
 
-    def __call__(self, metric_result: SampleMetricResult, **kwargs: Any) -> None:
+    def setup(self, **kwargs: Any) -> None:
+        """Prepare for edit weighting. Rewrite this function if necessary."""
+        pass
+
+    def __call__(
+        self,
+        sample_hyp: Sample,
+        sample_ref: Sample,
+        metric_result: SampleMetricResult,
+        **kwargs: Any
+    ) -> None:
         for ref_result in metric_result.ref_results:
             if isinstance(ref_result, BaseEditMetricResult):
                 for tp_edit in ref_result.tp_edits:
@@ -46,7 +60,16 @@ class BaseWeigher:
             else:
                 raise ValueError()
 
-    def weigh_batch(
+    # def weigh_batch(
+    #     self,
+    #     samples_hyp: List[Sample],
+    #     samples_ref: List[Sample],
+    #     metric_results: List[SampleMetricResult],
+    # ) -> None:
+    #     for metric_result in metric_results:
+    #         self.__call__(metric_result=metric_result)
+
+    def get_weights_batch(
         self,
         samples_hyp: List[Sample],
         samples_ref: List[Sample],

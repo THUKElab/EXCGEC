@@ -27,6 +27,22 @@ class CLEME(BaseEditMetric):
 
     For more details, refer to the following paper:
     CLEME: De-biasing Multi-reference Evaluation for Grammatical Error Correction [EMNLP 2023]
+
+    Args:
+        lang (str): Language of datasets.
+        scorer_type (ScorerType, optional): _description_. Defaults to ScorerType.PRF.
+        weigher_type (WeigherType, optional): _description_. Defaults to WeigherType.NONE.
+        weigher_model_name (str, optional): _description_. Defaults to None.
+        weigher_model_layer (int, optional): _description_. Defaults to None.
+        tokenizer_type (TokenizerType, optional): _description_. Defaults to None.
+        aligner_type (AlignerType, optional): _description_. Defaults to None.
+        aligner_standard (bool, optional): _description_. Defaults to False.
+        merger_type (MergerType, optional): _description_. Defaults to None.
+        merger_strategy (MergeStrategy, optional): _description_. Defaults to None.
+        classifier_type (ClassifierType, optional): _description_. Defaults to None.
+        enable_tqdm (bool, optional): _description_. Defaults to True.
+        merge_distance (int, optional): _description_. Defaults to 0.
+        output_visualize (Union[str, TextIO], optional): _description_. Defaults to None.
     """
 
     def __init__(
@@ -103,7 +119,7 @@ class CLEME(BaseEditMetric):
             dataset_hyp=dataset_hyp, dataset_ref=dataset_ref
         )
 
-        # Remove empty references to get rid of chunk partition collapse
+        # Remove empty references to avoid chunk partition collapse
         for sample in dataset_ref:
             valid_target_indices = [i for i, x in enumerate(sample.target) if x]
             if len(valid_target_indices) != len(sample.target):
@@ -113,7 +129,7 @@ class CLEME(BaseEditMetric):
                 sample.target = [sample.target[x] for x in valid_target_indices]
                 sample.edits[0] = [sample.edits[0][x] for x in valid_target_indices]
 
-        # Merge dataset_hyp and dataset_ref into one dataset for convenience
+        # Merge dataset_hyp and dataset_ref into one dataset
         merge_data = copy.deepcopy(dataset_hyp)
         for sample_idx, sample in enumerate(merge_data):
             sample.target.extend(dataset_ref[sample_idx].target)
@@ -130,7 +146,7 @@ class CLEME(BaseEditMetric):
             sample_hyp.chunks = [[sample_chunk[0]]]
             sample_ref.chunks = [sample_chunk[1:]]
 
-        # Visualize chunk partition
+        # Visualize chunk partition if possible
         if self.output_visualize:
             sout = self.output_visualize
             if isinstance(sout, str):
@@ -139,7 +155,7 @@ class CLEME(BaseEditMetric):
                 merge_data,
                 chunk_dataset=chunk_dataset,
                 sout=sout,
-                delimiter="" if self.lang == "zho" else "",
+                delimiter="" if self.lang == "zho" else " ",
             )
             if isinstance(self.output_visualize, str):
                 sout.close()
@@ -192,7 +208,7 @@ class CLEME(BaseEditMetric):
             metric_results (List[MetricSampleResult]): Results of metric.
         """
         if self.weigher is not None:
-            self.weigher.weigh_batch(
+            self.weigher.get_weights_batch(
                 samples_hyp=dataset_hyp.samples,
                 samples_ref=dataset_ref.samples,
                 metric_results=metric_results,
