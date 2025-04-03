@@ -2,9 +2,12 @@
 
 </div>
 
+-----
+
 The repository contains the codes and data for our AAAI 2025 Main Paper: [EXCGEC: A Benchmark for Edit-Wise Explainable Chinese Grammatical Error Correction](https://arxiv.org/abs/2407.00924)
+
 This paper introduces the EXGEC task, establishes the EXCGEC benchmark, and provides a comprehensive evaluation suite to advance the study of explainable Grammatical Error Correction.
-----
+
 ## Features
 * We propose the EXGEC task and establish the EXCGEC benchmark with a Chinese dataset and comprehensive metrics.
 * We develop EXGEC baseline models and investigate the performance of various LLMs using the proposed benchmark.
@@ -44,5 +47,4 @@ EXCGEC finetuning shell file
 cd exp-cgec
 bash excgec_finetuning_lora.sh
 ```
-
 
