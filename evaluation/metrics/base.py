@@ -227,6 +227,18 @@ class BaseEditMetric(BaseMetric):
             if not sample.edits:
                 sample.edits = self.parallel_to_edits(sample)
         return dataset
+    
+    def prepare_dataset_2(self, dataset: Dataset, num_workers: int = 1) -> Dataset:
+        queue_with_progress = get_tqdm_iterable(
+            items=dataset.samples,
+            show_progress=self.enable_tqdm,
+            desc=f"{self.classname} preparing edits",
+        )
+
+        for sample in queue_with_progress:
+            if not sample.edits:
+                sample.edits = self.parallel_to_edits_2(sample)
+        return dataset
 
     def prepare_datasets(
         self, dataset_hyp: Dataset, dataset_ref: Dataset

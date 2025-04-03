@@ -11,6 +11,10 @@ https://xiaosheng.blog/2020/08/13/calculate-bleu-and-rouge
 """
 
 from typing import Any, Dict, List
+from collections import defaultdict
+from tabulate import tabulate
+import pandas as pd
+import io
 
 import numpy as np
 from nltk.translate.bleu_score import sentence_bleu
@@ -29,6 +33,7 @@ from benchmarks.xcgec.objects import (
     XDataset,
     XSample,
     convert_dataset,
+    convert_dataset_2,
 )
 from benchmarks.xcgec.objects_eval import (
     BaseExplanationMetricResult,
@@ -57,7 +62,13 @@ def get_chunked_dataset(
     # Convert XDataset into conventional Dataset
     gec_dataset = convert_dataset(dataset=dataset)
 
-    metric = DependentCLEME(lang="zho")
+    metric = DependentCLEME(
+        lang="zho",
+        scorer_type=ScorerType.PRF,
+        weigher_type=WeigherType.LENGTH,
+        output_visualize=output_visualize,
+        merge_distance=merge_distance,
+        )
     metric.prepare_dataset(gec_dataset)
 
     # Chunk partition
@@ -68,10 +79,53 @@ def get_chunked_dataset(
         gec_sample.chunks = [sample_chunk]
 
     # Chunk visualization
+    #if output_visualize:
+    #    sout = output_visualize
+    #    if isinstance(sout, str):
+    #        sout = open(sout, "r", encoding="utf-8")
+    #    metric.visualize(dataset=dataset, chunk_dataset=chunk_dataset, sout=sout)
+    #    if isinstance(output_visualize, str):
+    #        sout.close()
+
+    return gec_dataset
+
+def get_chunked_dataset_2(
+    dataset: XDataset, merge_distance: int = 1, output_visualize: str = None
+) -> Dataset:
+    """Build dataset with chunks.
+
+    Args:
+        dataset (XDataset): Input XDataset.
+        merge_distance (int, optional): Maximum interval of two ajacent edits. Defaults to 1.
+        output_visualize (str, optional): Output file of visualization. Defaults to None.
+
+    Returns:
+        Dataset: Chunked dataset.
+    """
+    # Convert XDataset into conventional Dataset
+    gec_dataset = convert_dataset_2(dataset=dataset)
+
+    metric = DependentCLEME(
+        lang="zho",
+        scorer_type=ScorerType.PRF,
+        weigher_type=WeigherType.LENGTH,
+        output_visualize=output_visualize,
+        merge_distance=merge_distance,
+        )
+    metric.prepare_dataset_2(gec_dataset)
+
+    # Chunk partition
+    chunk_dataset = metric.chunk_partition_2(
+        dataset=gec_dataset, merge_distance=merge_distance
+    )
+    for sample_chunk, gec_sample in zip(chunk_dataset, gec_dataset):
+        gec_sample.chunks = [sample_chunk]
+
+    # Chunk visualization
     if output_visualize:
         sout = output_visualize
         if isinstance(sout, str):
-            sout = open(sout, "r", encoding="utf-8")
+            sout = open(sout, "w", encoding="utf-8")
         metric.visualize(dataset=dataset, chunk_dataset=chunk_dataset, sout=sout)
         if isinstance(output_visualize, str):
             sout.close()
@@ -144,6 +198,7 @@ def evaluate_gec(
         output_visualize=output_visualize,
         merge_distance=merge_distance,
     )
+    
     scorer_results, metric_results = metric.evaluate(
         dataset_hyp=gec_dataset_hyp,
         dataset_ref=gec_dataset_ref,
@@ -168,11 +223,10 @@ def match_edits(
     """
     results = []
     for edit_hyp in sample_hyp.edits:
-        print(edit_hyp)
-        src_pos_hyp = set(range(edit_hyp.src_interval[0], edit_hyp.src_interval[1]))
+        src_pos_hyp = set(range(edit_hyp.src_interval[0], edit_hyp.src_interval[1]+1))
         best_edit_ref, max_overlap = None, 0
         for edit_ref in sample_ref.edits:
-            src_pos_ref = set(range(edit_ref.src_interval[0], edit_ref.src_interval[1]))
+            src_pos_ref = set(range(edit_ref.src_interval[0], edit_ref.src_interval[1]+1))
             curr_overlap = len(src_pos_hyp & src_pos_ref)
             if curr_overlap > max_overlap:
                 best_edit_ref = edit_ref
@@ -218,7 +272,33 @@ def evaluate_exp(
     eval_error_descrption = evaluate_exp_error_description(
         sample_results, verbose=verbose
     )
+    
+    """Visulize results as a table."""
+    error_type_data = {}
+    for key, value in eval_error_type.items():
+        error_type_data[key] = value
 
+    error_severity_data = {}
+    for key, value in eval_error_severity.items():
+        error_severity_data[key] = value
+
+    error_description_data = {}
+    for key, value in eval_error_descrption.items():
+        error_description_data[key] = value
+
+    print("Error Type:")
+    print(tabulate(error_type_data.items(), headers=["Error Type", "Value"], tablefmt="grid"))
+    print()
+
+    # 打印 error_severity 的表格
+    print("Error Severity:")
+    print(tabulate(error_severity_data.items(), headers=["Error Severity", "Value"], tablefmt="grid"))
+    print()
+
+    # 打印 error_description 的表格
+    print("Error Description:")
+    print(tabulate(error_description_data.items(), headers=["Error Description", "Value"], tablefmt="grid"))
+    
     return {
         "num_pred": num_pred,
         "num_true": num_true,
@@ -327,7 +407,7 @@ def evaluate_exp_error_description(
     rouge = Rouge()
     bleu_reults, meteor_results = [], []
     rouge1_results, rouge2_results, rouge_long_results = [], [], []
-    for hyp, ref in zip(y_true, y_pred):
+    for hyp, ref in zip(y_pred, y_true):
         hyp_tokens = tokenize(hyp)
         ref_tokens = tokenize(ref)
 
@@ -340,18 +420,18 @@ def evaluate_exp_error_description(
         meteor_results.append(meteor)
 
         # ROUGE
-        rouge = rouge.get_scores(
+        rouge_tmp = rouge.get_scores(
             hyps=[" ".join(hyp_tokens)], refs=[" ".join(ref_tokens)]
         )
-        rouge1_results.append(rouge[0]["rouge-1"]["f"])
-        rouge2_results.append(rouge[0]["rouge-2"]["f"])
-        rouge_long_results.append(rouge[0]["rouge-l"]["f"])
+        rouge1_results.append(rouge_tmp[0]["rouge-1"]["f"])
+        rouge2_results.append(rouge_tmp[0]["rouge-2"]["f"])
+        rouge_long_results.append(rouge_tmp[0]["rouge-l"]["f"])
 
     return {
         "bleu": round(np.average(bleu_reults), 4),
         "meteor": round(np.average(meteor_results), 4),
         "rouge-1": round(np.average(rouge1_results), 4),
-        "rouge-2": round(np.average(rouge1_results), 4),
+        "rouge-2": round(np.average(rouge2_results), 4),
         "rouge-L": round(np.average(rouge_long_results), 4),
     }
 

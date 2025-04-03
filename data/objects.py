@@ -1,5 +1,5 @@
 import copy
-from typing import Any, Iterator, List
+from typing import Any, Iterator, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -11,11 +11,11 @@ class Edit(BaseModel):
     tgt_interval: List[int] = Field(default=None, description="")
     src_tokens: List[str] = Field(default=None, description="")
     tgt_tokens: List[str] = Field(default=None, description="")
-    src_tokens_tok: List[Any] = Field(default=None, description="")
-    tgt_tokens_tok: List[Any] = Field(default=None, description="")
+    src_tokens_tok: Optional[List[Any]] = Field(default=None, description="")
+    tgt_tokens_tok: Optional[List[Any]] = Field(default=None, description="")
     tgt_index: int = Field(default=None, description="")
     types: List[str] = Field(default_factory=list, description="")
-    weight: float = Field(default=None, description="")
+    weight: Optional[float] = Field(default=None, description="")
 
     @property
     def source(self) -> str:
@@ -107,6 +107,7 @@ class Sample(BaseModel):
         return any([not x for x in self.source + self.target])
 
     def __deepcopy__(self, memodict={}) -> "Sample":
+        
         return Sample(
             index=self.index,
             source=self.source.copy(),

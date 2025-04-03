@@ -102,7 +102,72 @@ class Errant(BaseEditMetric):
                 sample_edits[0].append(edits)
             else:
                 sample_edits[0].append([])
+
         return self.pickable_edits(sample_edits)
+    
+    def parallel_to_edits_2(self, sample: Sample) -> List[List[List[List[Edit]]]]:
+        """Generate edits of the given sample.
+
+        Args:
+            sample (Sample): Sample with sources and targets.
+
+        Returns:
+            List[List[List[Edit]]]: Generated edits.
+        """
+        # source, target = source.strip(), target.strip()
+        if not sample.target_1B  or not sample.reference:
+            return [[[[]]]]
+        src_tok = self.tokenizer(sample.source[0])
+        src_detok = self.tokenizer.detokenize(src_tok).strip()
+
+        sample_edits = [[[]]]
+        for idx, target in enumerate(sample.reference):
+            if src_detok != target:
+                # Tokenize target
+                tgt_tok = self.tokenizer(sample.reference[idx])
+                # Align source and target
+                align_seq = self.aligner(src_tok, tgt_tok)
+                # Merge alignment
+                edits = self.merger(src_tok, tgt_tok, align_seq, idx)
+                # Update Edit object with an updated error type
+                for edit in edits:
+                    self.classifier(src_tok, tgt_tok, edit)
+                sample_edits[0][0].append(edits)
+            else:
+                sample_edits[0][0].append([])
+                
+        for idx, target in enumerate(sample.target_1B):
+            if src_detok != target:
+                # Tokenize target
+                tgt_tok = self.tokenizer(sample.target_1B[idx])
+                # Align source and target
+                align_seq = self.aligner(src_tok, tgt_tok)
+                # Merge alignment
+                edits = self.merger(src_tok, tgt_tok, align_seq, idx)
+                # Update Edit object with an updated error type
+                for edit in edits:
+                    self.classifier(src_tok, tgt_tok, edit)
+                sample_edits[0][1].append(edits)
+            else:
+                sample_edits[0][1].append([])
+                
+        for idx, target in enumerate(sample.target_7B):
+            if src_detok != target:
+                # Tokenize target
+                tgt_tok = self.tokenizer(sample.target_7B[idx])
+                # Align source and target
+                align_seq = self.aligner(src_tok, tgt_tok)
+                # Merge alignment
+                edits = self.merger(src_tok, tgt_tok, align_seq, idx)
+                # Update Edit object with an updated error type
+                for edit in edits:
+                    self.classifier(src_tok, tgt_tok, edit)
+                sample_edits[0][2].append(edits)
+            else:
+                sample_edits[0][2].append([])
+            for i in sample_edits:
+                result = result.append(self.pickable_edits(i))
+        return result
 
     def evaluate_sample_correction(
         self, sample_hyp: Sample, sample_ref: Sample

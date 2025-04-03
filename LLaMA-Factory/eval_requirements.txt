@@ -1,0 +1,14 @@
+tabulate
+pandas
+nltk
+rouge_chinese
+scikit-learn
+pydantic==1.10.4
+opencc
+spacy
+ltp
+pypinyin
+rapidfuzz
+errant
+Levenshtein
+bert_score

@@ -12,7 +12,7 @@ class BaseWeigher:
 
     """
 
-    def __init__(self) -> None:
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__()
 
     def signature(self) -> str:

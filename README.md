@@ -1,44 +1,48 @@
-# EXCGEC
+# EXCGEC: A Benchmark for Edit-Wise Explainable Chinese Grammatical Error Correction
 
 </div>
 
-### 时间规划表
-
-|                            | 描述                    | 描述                     |      |
-| -------------------------- | ----------------------- | ------------------------ | ---- |
-| 数据集构建                 | 2024.03-2024.04         | GPT-4 合成数据、人工筛选 | ☑️    |
-| 联合模型开发（训练、解码） | 2024.04.18-2024.05.02   | 训练算法                 | ☑️    |
-|                            | 2024.05.02-2024.05.16   | 解码算法                 | ☑️    |
-| 评估度量开发               | 2024.05.10 - 2024.05.16 |                          | ing  |
-| Benchmark 设计和实验       | 2024.05.10 - 2024.05.16 | 设计评估指标             | ing  |
-| 论文撰写                   | 2024.06.01              |                          |      |
-|                            |                         |                          |      |
-
+The repository contains the codes and data for our AAAI 2025 Main Paper: [EXCGEC: A Benchmark for Edit-Wise Explainable Chinese Grammatical Error Correction](https://arxiv.org/abs/2407.00924)
+This paper introduces the EXGEC task, establishes the EXCGEC benchmark, and provides a comprehensive evaluation suite to advance the study of explainable Grammatical Error Correction.
 ----
+## Features
+* We propose the EXGEC task and establish the EXCGEC benchmark with a Chinese dataset and comprehensive metrics.
+* We develop EXGEC baseline models and investigate the performance of various LLMs using the proposed benchmark.
+* We perform detailed analyses and human evaluation experiments to assess the effectiveness of automatic metrics for error descriptions.
 
-### 更新
+## Requirements and Installation
+Python version >= 3.10
 
-* 2024.05.05：完成联合模型的训练代码开发
-* 2024.05.16：完成联合模型的解码代码开发(Qwen1.5 - top-p)
+```bash
+git clone https://https://github.com/THUKElab/EXCGEC.git
+conda create -n excgec-eval python=3.10.14
+conda activate excgec-eval
+pip install  -r eval_requirements.txt
+conda deactivate
 
+conda create -n excgec python=3.10.14
+conda activate excgec
+cd LLaMA-Factory
+pip install -e .[metrics]
+```
+
+## Usage
 ----
+```perl
+excgec
+├── benchmarks/            # Contains scripts and tools for data processing and benchmark evaluation.
+├── evaluation/            # Includes tools and scripts for model evaluation and performance metrics.
+├── excgec_generation/     # Holds decoding strategies and related components for EXGEC (Explainable Grammatical Error Correction).
+├── exp-cgec/              # Main directory containing executable files for training, fine-tuning, and evaluation.
+├── LLaMA-Factory/         # Contains components related to the LLaMA model factory and setup.
+├── util/                  # Miscellaneous utility scripts and functions for various tasks.
+└── LLM/                   # Stores fine-tuned models and associated code.
 
-#### 微调
+```
+EXCGEC finetuning shell file
+```bash
+cd exp-cgec
+bash excgec_finetuning_lora.sh
+```
 
-脚本：
-	LLaMA-Factory-main/multi_lora_qwen.sh
-
-### 工作日志
-
-#### 代码部分：
-
-1. 实现解释单任务，用于对解释信息进行评估
-   	实现：decode解码端，提供out和edits，只解释->（解释评估
-2. 新增模型：llama 3- 7B
-3. 目前为 lora 微调策略 
-
-#### 评估部分：
-
-1. 数据集划分
-2. Benchmark设置
 

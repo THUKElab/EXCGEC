@@ -94,6 +94,9 @@ class CLEME(BaseEditMetric):
 
     def parallel_to_edits(self, sample: Sample) -> List[List[List[Edit]]]:
         return self.errant.parallel_to_edits(sample=sample)
+    
+    def parallel_to_edits_2(self, sample: Sample) -> List[List[List[Edit]]]:
+        return self.errant.parallel_to_edits_2(sample=sample)
 
     def prepare_datasets(
         self, dataset_hyp: Dataset, dataset_ref: Dataset
@@ -246,6 +249,8 @@ class CLEME(BaseEditMetric):
                 edits_list.append(edits)
                 token_mapping = map_parallel(src_tokens, edits)
                 token_mapping_total.append(token_mapping)
+                
+            
 
             # Merge edits with overlapping interval
             merge_edits_list, shared_interval_list = merge_edit(
@@ -266,6 +271,62 @@ class CLEME(BaseEditMetric):
             )
             chunk_list_dataset.append(chunk_list_total)
         return chunk_list_dataset
+    
+    def chunk_partition_2(
+        self, dataset: Dataset, merge_distance: int = 0
+    ) -> List[List[List[List[Chunk]]]]:
+        """Segment the source, hypothesis and references into chunk sequences.
+
+        NOTE: Rewrite the function for higher efficiency.
+
+        1) Construct token_mapping
+        2) Merge edits with overlapping interval
+        3) Convert edit into chunk
+
+        Args:
+            dataset (Dataset): Input dataset
+            merge_distance (int): Maximum merging distance of two adjacent edits. Defaults to 0.
+
+        Returns:
+            List[List[List[Chunk]]]: Segmented chunks.
+        """
+        chunk_list_datasets = []
+        for data in dataset:
+            chunk_list_dataset = []
+            for sample in data:
+                # Segment sentence
+                src_tokens = self.errant.tokenizer.segment(sample.source[0])
+                tgt_tokens_list = [self.errant.tokenizer.segment(x) for x in sample.target_1B]
+
+                # Construct token_mapping
+                edits_list, token_mapping_total = [], []
+                for tgt_idx in range(len(sample.target_1B)):
+                    edits = sample.edits[0][tgt_idx]
+                    edits = sorted(edits, key=lambda x: x.src_interval[0])
+                    edits_list.append(edits)
+                    token_mapping = map_parallel(src_tokens, edits)
+                    token_mapping_total.append(token_mapping)
+
+                # Merge edits with overlapping interval
+                merge_edits_list, shared_interval_list = merge_edit(
+                    src_tokens,
+                    tgt_tokens_list,
+                    edits_list,
+                    token_mapping_total,
+                    merge_distance=merge_distance,
+                )
+
+                # Convert edit into chunk
+                chunk_list_total = convert_edit_into_chunk(
+                    src_tokens,
+                    tgt_tokens_list,
+                    merge_edits_list,
+                    shared_interval_list,
+                    token_mapping_total,
+                )
+                chunk_list_dataset.append(chunk_list_total)
+            chunk_list_datasets.append(chunk_list_dataset)
+        return chunk_list_datasets
 
     def visualize(
         self,

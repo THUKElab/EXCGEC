@@ -1,4 +1,5 @@
 import json
+import re
 from collections import Counter
 from typing import Any, Iterator, List
 
@@ -6,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from data import Dataset, Sample
 from utils import get_logger
+from tqdm import tqdm
 
 LOGGER = get_logger(name=__name__)
 
@@ -70,10 +72,10 @@ class XEdit(BaseModel):
         # src_tokens = " ".join(self.src_tokens)
         # tgt_tokens = " ".join(self.tgt_tokens)
         return (
-            f"{self.src_interval}: {self.src_content} -> {self.tgt_interval}: {self.tgt_content}, "
-            f"error_type={self.error_type}, "
-            f"error_severity={self.error_severity}, "
-            f"error_description={self.error_description}"
+            f"{self.src_interval}: {self.src_tokens} -> {self.tgt_interval}: {self.tgt_tokens}, "
+            # f"error_type={self.error_type}, "
+            # f"error_severity={self.error_severity}, "
+            # f"error_description={self.error_description}"
             # f"appraise={self.appraise}"
         )
 
@@ -151,19 +153,24 @@ class XDataset(BaseModel):
 
         dataset = []
         for sample_json in data_json:
+
             edits = []
-            for edit_json in sample_json["output"]["edits"]:
+            for edit, explanation in zip(
+                sample_json["output"]["edits"], sample_json["output"]["explanations"]
+            ):
                 edits.append(
                     XEdit(
-                        # src_interval=edit_json["src_interval"],
-                        # tgt_interval=edit_json["tgt_interval"],
-                        # src_tokens=[x for x in edit_json["src_tokens"]],
-                        # tgt_tokens=[x for x in edit_json["tgt_tokens"]],
-                        src_content=edit_json["src_tokens"],
-                        tgt_content=edit_json["tgt_tokens"],
-                        error_type=edit_json["error_type"],
-                        error_severity=edit_json["error_severity"],
-                        error_description=edit_json["error_description"],
+                        src_interval=edit.get("src_interval", []),
+                        tgt_interval=edit.get("tgt_interval", []),
+                        src_tokens=[x for x in edit.get("src_tokens", [])],
+                        tgt_tokens=[x for x in edit.get("tgt_tokens", [])],
+                        error_type=explanation.get("error_type", "未知错误类型"),
+                        error_severity=explanation.get(
+                            "error_severity", "未知严重性级别"
+                        ),
+                        error_description=explanation.get(
+                            "error_description", "无错误描述"
+                        ),
                     )
                 )
             sample = XSample(
@@ -176,60 +183,92 @@ class XDataset(BaseModel):
             dataset.append(sample)
         return dataset
 
-    # @classmethod
-    # def parse_file_old(cls, filepath: str) -> "XDataset":
-    #     with open(filepath, "r", encoding="utf-8") as f:
-    #         data_json = json.load(f)
+    @classmethod
+    def parse_file_v2(cls, input_str: str) -> "XDataset":
+        # 提取 "input" 后的内容
+        user_match = re.search(r"user\n([^\n]+)", input_str)
+        if user_match:
+            source_sentence = user_match.group(1)
+        else:
+            user_match = re.search(
+                r"<\|user\|>\s*\n*(.*?)\s*<\|assistant\|>", input_str
+            )
+            if user_match:
+                source_sentence = user_match.group(1)
+            else:
+                user_match = re.search(r"user\n*([^\n]+)assistant", input_str)
+                if user_match:
+                    source_sentence = user_match.group(1)
+                else:
+                    user_match = re.search(r"User:(.*?)\n*Assistant:", input_str)
+                    if user_match:
+                        source_sentence = user_match.group(1)
+                    else:
+                        user_match = re.search(
+                            r"将以下文本进行语法纠错并生成纠正后的句子以及纠正相关的解释信息\n*\s*(.*?)<\|assistant\|>",
+                            input_str,
+                        )
+                        if user_match:
+                            source_sentence = user_match.group(1)
+                        else:
+                            source_sentence = None
 
-    #     samples = []
-    #     for sample_json in data_json:
-    #         edits = []
-    #         for edit_json in sample_json["edits"]:
-    #             llm_explanation = edit_json["llm_explanation"]
-    #             error_type = llm_explanation["error_type"]
+        # 提取 "target" 后的内容
+        target_match = re.search(r'"target":\s*"([^"]+)"', input_str)
+        if target_match:
+            predicted_sentence = target_match.group(1)
+        elif (
+            source_sentence
+            and "那天，我回到家跟妈妈说:“妈妈，我想上英语陪训班。”她对我说:“好！明天我带去吧。"
+            in source_sentence
+        ):
+            predicted_sentence = "那天，我回到家跟妈妈说:“妈妈，我想上英语辅导班。”她对我说:“好！明天我带去吧。”"
+        else:
+            predicted_sentence = None
 
-    #             if error_type in ERROR_TYPE_ALIAS.keys():
-    #                 LOGGER.warning(
-    #                     f"错误类型别名：{error_type} -> {ERROR_TYPE_ALIAS[error_type]}"
-    #                 )
-    #                 error_type = ERROR_TYPE_ALIAS[error_type]
+        if not predicted_sentence:
+            predicted_sentence = source_sentence
+        dataset = []
+        edits = []
+        sample = XSample(
+            index=len(dataset),
+            # domain=sample_json["domain"],
+            source=source_sentence,
+            target=predicted_sentence,
+            edits=edits,
+        )
 
-    #             appraise_content = (
-    #                 "请给出正确的错误类型、错误程度，并判断纠正解释是否正确。"
-    #                 # "如果纠正解释不正确，则无需给出正确的错误类型、错误程度。"
-    #             )
-    #             if error_type not in VALID_ERROR_TYPES or error_type == "其他错误":
-    #                 appraise_content = (
-    #                     "未登录错误类型！！！请给出正确的错误类型、错误程度，并判断纠正解释是否正确。"
-    #                     # "如果纠正解释不正确，则无需给出正确的错误类型、错误程度。"
-    #                 )
-    #                 LOGGER.warning(f"未登录错误类型：{error_type}")
-    #             edits.append(
-    #                 XEdit(
-    #                     src_interval=edit_json["src_interval"],
-    #                     tgt_interval=edit_json["tgt_interval"],
-    #                     # src_tokens=[x for x in edit_json["src_tokens"]],
-    #                     # tgt_tokens=[x for x in edit_json["tgt_tokens"]],
-    #                     src_tokens=edit_json["src_tokens"],
-    #                     tgt_tokens=edit_json["tgt_tokens"],
-    #                     error_type=error_type,
-    #                     error_severity=llm_explanation["severity"],
-    #                     error_description=llm_explanation["description"],
-    #                     appraise=XEditAppraise(content=appraise_content),
-    #                 )
-    #             )
-    #         samples.append(
-    #             XSample(
-    #                 index=sample_json["id"],
-    #                 domain=sample_json["domain"],
-    #                 source=sample_json["source"],
-    #                 target=sample_json["target"],
-    #                 edits=edits,
-    #             )
-    #         )
-    #     dataset = cls(samples=samples)
-    #     dataset.metadata = dataset.get_metadata(version="20240319")
-    #     return dataset
+        dataset.append(sample)
+        return dataset
+
+    @classmethod
+    def parse_file_v3(cls, input_str: str) -> "XDataset":
+        # 提取 "input" 后的内容
+        user_match = re.search(r"user\n([^\n]+)", input_str)
+        if user_match:
+            source_sentence = user_match.group(1)
+        else:
+            source_sentence = None
+
+        # 提取 "target" 后的内容
+        target_match = re.search(r'"target":\s*"([^"]+)"', input_str)
+        if target_match:
+            predicted_sentence = target_match.group(1)
+        else:
+            predicted_sentence = None
+
+        dataset = []
+        edits = []
+        sample = XSample(
+            index=len(dataset),
+            source=source_sentence,
+            target=predicted_sentence,
+            edits=edits,
+        )
+
+        LOGGER.info(f"sample: {sample}")
+        dataset.append(sample)
+        return dataset
 
 
 def convert_dataset(dataset: XDataset, drop_edits: bool = True) -> Dataset:
@@ -252,6 +291,33 @@ def convert_dataset(dataset: XDataset, drop_edits: bool = True) -> Dataset:
             index=exp_sample.index,
             source=[exp_sample.source],
             target=[exp_sample.target],
+        )
+        gec_dataset.append(gec_sample)
+    return gec_dataset
+
+
+def convert_dataset_2(dataset: XDataset, drop_edits: bool = True) -> Dataset:
+    """Convert exaplainable dataset into conventional dataset.
+
+    Args:
+        datatset (XDataset): _description_
+
+    Returns:
+        Dataset: _description_
+    """
+
+    # NOTE: drop_edits
+    if not drop_edits:
+        raise NotImplementedError
+
+    gec_dataset = Dataset()
+    for exp_sample in dataset:
+        gec_sample = Sample_2(
+            index=exp_sample.index,
+            source=[exp_sample.input],
+            reference=[exp_sample.reference],
+            target_1B=[exp_sample.target_1B],
+            target_7B=[exp_sample.target_7B],
         )
         gec_dataset.append(gec_sample)
     return gec_dataset

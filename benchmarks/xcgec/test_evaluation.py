@@ -1,36 +1,85 @@
 import sys
-
+import os
+import json
+import re
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from benchmarks.xcgec.evaluate import evaluate, get_chunked_dataset
 from benchmarks.xcgec.objects import XDataset, XEdit, XSample
 
+def string_to_json(input_chunk):
+    """
+    将字符串转换成包含 src_interval, tgt_interval, src_tokens 和 tgt_tokens 字段的 JSON 字典
+    
+    Args:
+        input_str (str): 包含字段和值的字符串
+        
+    Returns:
+        dict: 转换后的 JSON 格式字典
+    """
+    # 构建 JSON 格式的字典
+    data = {
+        "src_interval": input_chunk.src_interval,
+        "tgt_interval": input_chunk.tgt_interval,
+        "src_tokens": input_chunk.src_tokens,
+        "tgt_tokens": input_chunk.tgt_tokens
+    }
+    
+    return data
 
-def test_extract_edits() -> None:
-    filepath_ref = "/data/yejh/nlp/EXCGEC/exp-cgec/data/test1.json"
-    dataset_ref = XDataset.parse_file_v1(filepath_ref)
-
+def test_extract_edits(input_str: str) -> None:
+    dataset_ref = XDataset.parse_file_v2(input_str)
+    
     gec_dataset_ref = get_chunked_dataset(
         dataset=dataset_ref, merge_distance=1, output_visualize=sys.stdout
     )
-
+    
+    edits_strs = []
     # Treat chunks as extracted edits.
     for sample in gec_dataset_ref:
-        # print(sample)
         chunks = list(filter(lambda x: x.types, sample.chunks[0][0]))
-        print(f"Source: {sample.source[0]}")
-        print(f"Target: {sample.target[0]}")
-        print("Chunks: " + "\n".join(map(str, chunks)))
-        print()
+        for i in chunks:
+            
+            edits_str = string_to_json(i)
+            edits_strs.append(edits_str)
+    edits = {
+        "edits": edits_strs
+    }
+    
+    return json.dumps(edits, ensure_ascii=False).strip('{}') + ','
+
+def test_extract_edits_only_exp(input_str: str) -> None:
+    dataset_ref = XDataset.parse_file_v2(input_str)
+    
+    gec_dataset_ref = get_chunked_dataset(
+        dataset=dataset_ref, merge_distance=1, output_visualize=sys.stdout
+    )
+    
+    edits_strs = []
+    # Treat chunks as extracted edits.
+    for sample in gec_dataset_ref:
+        chunks = list(filter(lambda x: x.types, sample.chunks[0][0]))
+        for i in chunks:
+            edits_str = string_to_json(i)
+            edits_strs.append(edits_str)
+    edits = {
+        "edits": edits_strs
+    }
+    
+    
+    return edits_strs
 
 
-def test_evaluation() -> None:
-    filepath_ref = "benchmarks/xcgec/data/demo/ref.json"
-    filepath_hyp = "benchmarks/xcgec/data/demo/hyp.json"
+def test_evaluation(filepath_hyp,filepath_ref) -> None:
+    #filepath_ref = "./data/demo/ref.json"
+    #filepath_hyp = "./data/demo/hyp.json"
 
     dataset_ref = XDataset.parse_file_v1(filepath_ref)
     dataset_hyp = XDataset.parse_file_v1(filepath_hyp)
 
     results = evaluate(dataset_ref=dataset_ref, dataset_hyp=dataset_hyp)
     print(results)
+    print("--------------")
+    print(filepath_hyp)
 
 
 def test_evaluation2() -> None:
@@ -77,7 +126,10 @@ def test_evaluation2() -> None:
     results = evaluate(dataset_ref=dataset_ref, dataset_hyp=dataset_hyp)
     print(results)
 
-
-if __name__ == "__main__":
-    # test_extract_edits()
-    test_evaluation2()
+def extract_before_explanations(output_string):
+    # 找到 "explanations" 的起始位置
+    index = output_string.find("\"explanations\"")
+    # 截取从开头到 "explanations" 开始之前的内容
+    if index != -1:
+        return output_string[:index]
+    return output_string
