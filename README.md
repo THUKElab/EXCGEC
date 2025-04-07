@@ -18,6 +18,7 @@ Python version >= 3.10
 
 ```bash
 git clone https://https://github.com/THUKElab/EXCGEC.git
+cd LLaMA-Factory
 conda create -n excgec-eval python=3.10.14
 conda activate excgec-eval
 pip install  -r eval_requirements.txt
@@ -25,7 +26,6 @@ conda deactivate
 
 conda create -n excgec python=3.10.14
 conda activate excgec
-cd LLaMA-Factory
 pip install -e .[metrics]
 ```
 
