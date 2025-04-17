@@ -159,6 +159,4 @@ cython_debug/
 .git/
 
 # Training codes
-LLaMA-Factory-main/
-exp-cgec/
-exp-cgec/**
+
