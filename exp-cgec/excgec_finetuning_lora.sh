@@ -6,10 +6,10 @@ export NCCL_IB_DISABLE="1"
 
 cd ../LLaMA-Factory/
 
-MODEL_PATH="/data/LLMs/deepseek-ai/deepseek-llm-7b-chat"
+MODEL_PATH="/data/LLMs/Qwen/Qwen1.5-7B-Chat"
 TRAIN_DATASET="release_train_exp_cgec"
 VALID_DATASET="release_valid_exp_cgec"
-TEMPLATE="deepseek"
+TEMPLATE="qwen"
 OUTPUT_DIR="./model/${TEMPLATE}-llm-7b-chat_single_lora_checkpoint3"
 EXPORT_DIR=" ../LLM/${TEMPLATE}-llm-7b-chat_single_lora_checkpoint3"
 input_file="./data/splits/test_out.json"
